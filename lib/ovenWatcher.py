@@ -2,6 +2,7 @@ import threading,logging,json,time,datetime
 from oven import Oven
 log = logging.getLogger(__name__)
 
+
 class OvenWatcher(threading.Thread):
     def __init__(self,oven):
         self.last_profile = None
@@ -21,12 +22,12 @@ class OvenWatcher(threading.Thread):
             oven_state = self.oven.get_state()
             
             if oven_state.get("state") == Oven.STATE_RUNNING:
-                if self.log_skip_counter==0:
+                if self.log_skip_counter == 0:
                     self.last_log.append(oven_state)
             else:
                 self.recording = False
             self.notify_all(oven_state)
-            self.log_skip_counter = (self.log_skip_counter +1)%20
+            self.log_skip_counter = (self.log_skip_counter + 1) % 20
             time.sleep(self.oven.time_step)
     
     def record(self, profile):
@@ -37,12 +38,12 @@ class OvenWatcher(threading.Thread):
         #we just turned on, add first state for nice graph
         self.last_log.append(self.oven.get_state())
 
-    def add_observer(self,observer):
+    def add_observer(self, observer):
         if self.last_profile:
             p = {
                 "name": self.last_profile.name,
                 "data": self.last_profile.data, 
-                "type" : "profile"
+                "type": "profile"
             }
         else:
             p = None
@@ -53,10 +54,10 @@ class OvenWatcher(threading.Thread):
             'log': self.last_log,
             #'started': self.started
         }
-        print backlog
+        print(backlog)
         backlog_json = json.dumps(backlog)
         try:
-            print backlog_json
+            print(backlog_json)
             observer.send(backlog_json)
         except:
             log.error("Could not send backlog to new observer")

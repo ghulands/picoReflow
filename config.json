@@ -1,0 +1,172 @@
+{
+  "oven": {
+    "drivers": [
+      {
+        "name": "max31855json0",
+        "driver": "max31855json",
+        "driver_options": {
+          "serial_port": "/dev/cu.usbmodem14101",
+          "channels": 4
+        }
+      },
+      {
+        "name": "gpio-fan",
+        "driver": "gpio",
+        "driver_options": {
+          "type": "switch",
+          "hz_limit": 10,
+          "bcm_pin": 13,
+          "invert": true
+        }
+      },
+      {
+        "name": "gpio-ssr-fan",
+        "driver": "gpio",
+        "driver_options": {
+          "type": "pwm",
+          "bcm_pin": 13,
+          "pwm_freq": 100,
+          "pwm_min": 0,
+          "pwm_max": 2500
+        }
+      },
+      {
+        "name": "gpio-pi-fan",
+        "driver": "gpio",
+        "driver_options": {
+          "type": "pwm",
+          "bcm_pin": 13,
+          "pwm_freq": 100,
+          "pwm_min": 0,
+          "pwm_max": 2500
+        }
+      },
+      {
+        "name": "gpio-heater",
+        "driver": "gpio",
+        "driver_options": {
+          "type": "switch",
+          "hz_limit": 10,
+          "bcm_pin": 13
+        }
+      },
+      {
+        "name": "gpio-door-sensor",
+        "driver": "gpio",
+        "driver_options": {
+          "type": "input",
+          "bcm_pin": 13,
+          "pud": "up",
+          "edge": "falling",
+          "debounce_ms": 300
+        }
+      },
+      {
+        "name": "simulator0",
+        "driver": "temperature_simulator",
+        "driver_options": {
+          "simulation": {
+            "step_time": 1.0,
+            "t_env": 25.0,
+            "c_heat": 100.0,
+            "c_oven": 1000.0,
+            "p_oven": 2000.0,
+            "p_heat": 3500.0,
+            "R_o_nocool": 1.0,
+            "R_o_cool": 0.05,
+            "R_ho_noair": 0.1,
+            "R_ho_air": 0.05
+          }
+        }
+      }
+    ],
+    "temperature": [
+      {
+        "driver": "max31855json0",
+        "channel": 0,
+        "name": "top-front",
+        "type": "chamber"
+      },
+      {
+        "driver": "max31855json0",
+        "channel": 1,
+        "name": "bottom-back",
+        "type": "chamber"
+      },
+      {
+        "driver": "max31855json0",
+        "channel": 2,
+        "name": "pcb-1",
+        "type": "pcb"
+      },
+      {
+        "driver": "max31855json0",
+        "channel": 3,
+        "name": "pcb-2",
+        "type": "pcb"
+      }
+    ],
+    "door": {
+      "driver": "max31855json0",
+      "driver_options": {
+        "configure": "D C 23 178;",
+        "open": "D O1000",
+        "close": "D S1500"
+      }
+    },
+    "heater": [
+      {
+        "driver": "gpio-heater",
+        "name": "heater"
+      }
+    ],
+    "fan": [
+      {
+        "driver": "gpio-fan",
+        "name": "chamber",
+        "type": "chamber"
+      },
+      {
+        "driver": "gpio-ssr-fan",
+        "name": "ssr fan",
+        "type": "aux"
+      },
+      {
+        "driver": "gpio-pi-fan",
+        "name": "pi cooling fan",
+        "type": "aux"
+      }
+    ]
+  },
+  "control": {
+    "time_step": 0.5,
+    "pid": {
+      "ki": 0.23,
+      "kp": 1.0,
+      "kd": 2.1
+    },
+    "equalization": {
+      "chamber": {
+        "enabled": true,
+        "delta": 10
+      },
+      "pcb": {
+        "enabled": true,
+        "delta": 5
+      }
+    }
+  },
+
+  "electricity": {
+    "cost_per_kwh": "0.23",
+    "units": "$"
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s %(levelname)s %(name)s: %(message)s"
+  },
+  "server": {
+    "address": "0.0.0.0",
+    "port": 8081
+  }
+}

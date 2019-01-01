@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import os
 import sys
@@ -6,33 +6,36 @@ import logging
 import json
 
 import bottle
-import gevent
-import geventwebsocket
 from gevent.pywsgi import WSGIServer
 from geventwebsocket.handler import WebSocketHandler
+from geventwebsocket import WebSocketError
 
-try:
-    sys.dont_write_bytecode = True
-    import config
-    sys.dont_write_bytecode = False
-except:
-    print "Could not import config file."
-    print "Copy config.py.EXAMPLE to config.py and adapt it for your setup."
-    exit(1)
-
-logging.basicConfig(level=config.log_level, format=config.log_format)
-log = logging.getLogger("picoreflowd")
-log.info("Starting picoreflowd")
+from oven import Oven, Profile
+from ovenWatcher import OvenWatcher
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, script_dir + '/lib/')
 profile_path = os.path.join(script_dir, "storage", "profiles")
 
-from oven import Oven, Profile
-from ovenWatcher import OvenWatcher
+config = None
+
+try:
+    config_file = open(os.path.join(script_dir, 'config.json'), 'r')
+    config = json.load(config_file)
+except IOError:
+    print("Could not import config file.")
+    print("Copy config.py.EXAMPLE to config.py and adapt it for your setup.")
+    sys.exit(1)
+
+logging.basicConfig(level=config['logging']['level'], format=config['logging']['format'])
+log = logging.getLogger("picoreflowd")
+log.info("Starting picoreflowd")
+
+# need to validate the config
+
 
 app = bottle.Bottle()
-oven = Oven()
+oven = Oven(config)
 ovenWatcher = OvenWatcher(oven)
 
 
@@ -51,7 +54,7 @@ def get_websocket_from_request():
     env = bottle.request.environ
     wsock = env.get('wsgi.websocket')
     if not wsock:
-        abort(400, 'Expected WebSocket request.')
+        app.abort(400, 'Expected WebSocket request.')
     return wsock
 
 
@@ -72,17 +75,6 @@ def handle_control():
                     profile = Profile(profile_json)
                 oven.run_profile(profile)
                 ovenWatcher.record(profile)
-            elif msgdict.get("cmd") == "SIMULATE":
-                log.info("SIMULATE command received")
-                profile_obj = msgdict.get('profile')
-                if profile_obj:
-                    profile_json = json.dumps(profile_obj)
-                    profile = Profile(profile_json)
-                simulated_oven = Oven(simulate=True, time_step=0.05)
-                simulation_watcher = OvenWatcher(simulated_oven)
-                simulation_watcher.add_observer(wsock)
-                #simulated_oven.run_profile(profile)
-                #simulation_watcher.record(profile)
             elif msgdict.get("cmd") == "STOP":
                 log.info("Stop command received")
                 oven.abort_run()
@@ -166,7 +158,7 @@ def handle_status():
 def get_profiles():
     try:
         profile_files = os.listdir(profile_path)
-    except:
+    except IOError:
         profile_files = []
     profiles = []
     for filename in profile_files:
@@ -188,6 +180,7 @@ def save_profile(profile, force=False):
     log.info("Wrote %s" % filepath)
     return True
 
+
 def delete_profile(profile):
     profile_json = json.dumps(profile)
     filename = profile['name']+".json"
@@ -198,20 +191,20 @@ def delete_profile(profile):
 
 
 def get_config():
-    return json.dumps({"temp_scale": config.temp_scale,
-        "time_scale_slope": config.time_scale_slope,
-        "time_scale_profile": config.time_scale_profile,
-        "kwh_rate": config.kwh_rate,
-        "currency_type": config.currency_type})    
+    return json.dumps(
+        {
+            "kwh_rate": config['electricity']['cost_per_kwh'],
+            "currency_type": config['electricity']['units']
+        }
+    )
 
 
 def main():
-    ip = config.listening_ip
-    port = config.listening_port
+    ip = config['server']['address']
+    port = config['server']['port']
     log.info("listening on %s:%d" % (ip, port))
 
-    server = WSGIServer((ip, port), app,
-                        handler_class=WebSocketHandler)
+    server = WSGIServer((ip, port), app, handler_class=WebSocketHandler)
     server.serve_forever()
 
 

@@ -485,13 +485,13 @@ $(document).ready(function()
         {
             x = JSON.parse(e.data);
 
-            if (x.type == "backlog")
+            if (x.type === "backlog")
             {
                 if (x.profile)
                 {
                     selected_profile_name = x.profile.name;
                     $.each(profiles,  function(i,v) {
-                        if(v.name == x.profile.name) {
+                        if(v.name === x.profile.name) {
                             updateProfile(i);
                             $('#e2').select2('val', i);
                         }
@@ -504,13 +504,13 @@ $(document).ready(function()
                 });
             }
 
-            if(state!="EDIT")
+            if(state !== "EDIT")
             {
                 state = x.state;
 
-                if (state!=state_last)
+                if (state !== state_last)
                 {
-                    if(state_last == "RUNNING")
+                    if(state_last === "RUNNING")
                     {
                         $('#target_temp').html('---');
                         updateProgress(0);
@@ -527,7 +527,7 @@ $(document).ready(function()
                     }
                 }
 
-                if(state=="RUNNING")
+                if(state === "RUNNING")
                 {
                     $("#nav_start").hide();
                     $("#nav_stop").show();
@@ -539,10 +539,8 @@ $(document).ready(function()
                     eta = new Date(left * 1000).toISOString().substr(11, 8);
 
                     updateProgress(parseFloat(x.runtime)/parseFloat(x.totaltime)*100);
-                    $('#state').html('<span class="glyphicon glyphicon-time" style="font-size: 22px; font-weight: normal"></span><span style="font-family: Digi; font-size: 40px;">' + eta + '</span>');
+                    $('#state').html('<span class="glyphicon glyphicon-time" style="font-size: 18px; font-weight: normal"></span><span style="font-family: Digi; font-size: 32px;">' + eta + '</span>');
                     $('#target_temp').html(parseInt(x.target));
-
-
                 }
                 else
                 {
@@ -551,13 +549,59 @@ $(document).ready(function()
                     $('#state').html('<p class="ds-text">'+state+'</p>');
                 }
 
-                $('#act_temp').html(parseInt(x.temperature));
+                //$('#act_temp').html(parseInt(x.temperature));
+
+                let chambers = $('#chamber_temperatures');
+                chambers.empty();
+
+                for (let i = 0; i < x.temperatures.chamber.length; i++) {
+                    let t = x.temperatures.chamber[i];
+                    let td = document.createElement('div');
+                    let sp = document.createElement('span');
+                    sp.classList.add('ds-temperature-item');
+                    sp.appendChild(document.createTextNode(t.name + ':'));
+                    td.appendChild(sp);
+
+                    let val = document.createElement('span');
+                    val.appendChild(document.createTextNode(t.celcius));
+                    val.classList.add('ds-num');
+                    val.classList.add('ds-temperature-value');
+                    td.appendChild(val);
+
+                    let units = document.createElement('span');
+                    units.appendChild(document.createTextNode('°C'));
+                    units.classList.add('ds-temperature-units');
+                    td.appendChild(units);
+
+                    td.classList.add('ds-temperature-pair');
+                    chambers.append(td);
+                }
+
+                let pcbs = $('#pcb_temperatures');
+                pcbs.empty();
+
+                for (let i = 0; i < x.temperatures.pcb.length; i++) {
+                    let t = x.temperatures.pcb[i];
+                    let td = document.createElement('div');
+                    let sp = document.createElement('span');
+                    sp.classList.add('ds-temperature-item')
+                    sp.appendChild(document.createTextNode(t.name + ':'));
+                    td.appendChild(sp);
+
+                    let val = document.createElement('span');
+                    val.appendChild(document.createTextNode(t.celcius + '°C'));
+                    val.classList.add('ds-num')
+                    val.classList.add('ds-temperature-value')
+                    td.appendChild(val);
+                    td.classList.add('ds-temperature-pair');
+                    pcbs.append(td);
+                }
                 
                 if (x.heat > 0.5) { $('#heat').addClass("ds-led-heat-active"); } else { $('#heat').removeClass("ds-led-heat-active"); }
                 if (x.cool > 0.5) { $('#cool').addClass("ds-led-cool-active"); } else { $('#cool').removeClass("ds-led-cool-active"); }
                 if (x.air > 0.5) { $('#air').addClass("ds-led-air-active"); } else { $('#air').removeClass("ds-led-air-active"); }
                 if (x.temperature > hazardTemp()) { $('#hazard').addClass("ds-led-hazard-active"); } else { $('#hazard').removeClass("ds-led-hazard-active"); }
-                if ((x.door == "OPEN") || (x.door == "UNKNOWN")) { $('#door').addClass("ds-led-door-open"); } else { $('#door').removeClass("ds-led-door-open"); }
+                if ((x.door === "OPEN") || (x.door === "UNKNOWN")) { $('#door').addClass("ds-led-door-open"); } else { $('#door').removeClass("ds-led-door-open"); }
 
                 state_last = state;
 
@@ -581,8 +625,8 @@ $(document).ready(function()
             kwh_rate = x.kwh_rate;
             currency_type = x.currency_type;
             
-            if (temp_scale == "c") {temp_scale_display = "C";} else {temp_scale_display = "F";}
-              
+            //if (temp_scale === "c") {temp_scale_display = "C";} else {temp_scale_display = "F";}
+            temp_scale_display = "C";
 
             $('#act_temp_scale').html('º'+temp_scale_display);
             $('#target_temp_scale').html('º'+temp_scale_display);
@@ -598,8 +642,7 @@ $(document).ready(function()
                     time_scale_long = "Hours";
                     break;
             }
-            
-        }
+        };
 
         // Control Socket ////////////////////////////////
 
