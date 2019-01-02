@@ -26,17 +26,17 @@ class max31855json(driver.TemperatureDriver):
 
         while True:
             try:
-                json_str = self.serial_port.readline()
-                if not str(json_str).startswith('{'):
+                json_str = self.serial_port.readline().decode("utf-8")
+                if not json_str.startswith('{'):
                     continue
                 self.log.debug('received json string: %s', json_str)
-                decoded = json.loads(json_str, encoding='ascii')
+                decoded = json.loads(json_str, encoding='utf-8')
                 self.last_response = decoded
                 with self.lock:
-                    for sensor in decoded.temperature:
-                        self.temperatures[sensor.channel] = sensor.value
-            except driver.DriverError:
-                self.log.exception("Problem reading temp")
+                    for sensor in decoded['temperature']:
+                        self.temperatures[sensor['channel']] = sensor['value']
+            except Exception as e:
+                self.log.exception("Problem reading temp, %s", str(e))
             time.sleep(self.time_step)
 
     def cleanup(self):
