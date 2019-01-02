@@ -230,6 +230,17 @@ body {
     line-height: 24px;
 }
 
+.ds-temperature-units {
+    display: inline-block;
+    font-family: "Arial";
+    font-size: 24px;
+    vertical-align: top;
+    line-height: 24px;
+    margin-left: 4px;
+    margin-top: -4px;
+    color: #75890c;
+}
+
 .ds-text {
     border: none;
     width: initial;

@@ -6,6 +6,7 @@ import datetime
 import logging
 import json
 import importlib.util
+import statistics
 
 import driver
 
@@ -131,11 +132,29 @@ class Oven (threading.Thread):
         self.reset()
 
     def get_chamber_temperature(self):
-        avg = sum(x.get() for x in self.chamber_sensors) / len(self.chamber_sensors)
+        count = 0
+        total = 0
+        for x in self.chamber_sensors:
+            if x > 0:
+                total = total + x
+                count = count + 1
+        avg = total / count
         return avg
 
+    def chamber_has_variance(self):
+        result = False
+        if len(self.chamber_sensors) > 1:
+            result = statistics.stdev([x.get() for x in self.chamber_sensors]) > 20  # this should come from config
+        return result
+
     def get_pcb_temperature(self):
-        avg = sum(x.get() for x in self.pcb_sensors) / len(self.chamber_sensors)
+        count = 0
+        total = 0
+        for x in self.pcb_sensors:
+            if x > 0:
+                total = total + x
+                count = count + 1
+        avg = total / count
         return avg
 
     def run(self):
@@ -149,7 +168,7 @@ class Oven (threading.Thread):
                 runtime_delta = datetime.datetime.now() - self.start_time
                 self.runtime = runtime_delta.total_seconds()
                 log.info("running at %.1f deg C (Target: %.1f) , heat %.2f, cool %.2f, air %.2f, door %s (%.1fs/%.0f)"
-                         % (self.get_chamber_temperature(),
+                         % (self.get_pcb_temperature(),
                             self.target,
                             self.heat,
                             self.cool,
@@ -158,7 +177,7 @@ class Oven (threading.Thread):
                             self.runtime,
                             self.total_time))
                 self.target = self.profile.get_target_temperature(self.runtime)
-                pid = self.pid.compute(self.target, self.get_chamber_temperature())
+                pid = self.pid.compute(self.target, self.get_pcb_temperature())
 
                 log.info("pid: %.3f" % pid)
 
@@ -166,7 +185,7 @@ class Oven (threading.Thread):
                 if pid > 0:
                     # The temp should be changing with the heat on
                     # Count the number of time_steps encountered with no change and the heat on
-                    if last_temp == self.get_chamber_temperature():
+                    if last_temp == self.get_pcb_temperature():
                         temperature_count += 1
                     else:
                         temperature_count = 0
@@ -181,21 +200,20 @@ class Oven (threading.Thread):
                     temperature_count = 0
                     
                 #Capture the last temperature value.  This must be done before set_heat, since there is a sleep in there now.
-                last_temp = self.get_chamber_temperature()
+                last_temp = self.get_pcb_temperature()
                 
                 self.set_heat(pid)
                 
                 #if self.profile.is_rising(self.runtime):
                 #    self.set_cool(False)
-                #    self.set_heat(self.get_chamber_temperature() < self.target)
+                #    self.set_heat(self.get_pcb_temperature() < self.target)
                 #else:
                 #    self.set_heat(False)
-                #    self.set_cool(self.get_chamber_temperature() > self.target)
+                #    self.set_cool(self.get_pcb_temperature() > self.target)
 
-                if self.get_chamber_temperature() > 200:
+                if self.get_pcb_temperature() > 200:
                     self.set_air(False)
-
-                elif self.get_chamber_temperature() < 180:
+                elif self.get_pcb_temperature() < 180 or self.chamber_has_variance():
                     self.set_air(True)
 
                 if self.runtime >= self.total_time:
@@ -244,10 +262,10 @@ class Oven (threading.Thread):
     def get_state(self):
         chamber_temps = []
         for temp in self.chamber_sensors:
-            chamber_temps.append({'name': temp.name, 'celcius': temp.get()})
+            chamber_temps.append({'name': temp.name, 'celcius': '{0:.2f}'.format(temp.get())})
         pcb_temps = []
         for temp in self.pcb_sensors:
-            pcb_temps.append({'name': temp.name, 'celcius': temp.get()})
+            pcb_temps.append({'name': temp.name, 'celcius': '{0:.2f}'.format(temp.get())})
         state = {
             'runtime': self.runtime,
             'temperature': self.chamber_sensors[0].get(),

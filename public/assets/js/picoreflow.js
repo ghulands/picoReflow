@@ -571,7 +571,7 @@ $(document).ready(function()
                     let units = document.createElement('span');
                     units.appendChild(document.createTextNode('°C'));
                     units.classList.add('ds-temperature-units');
-                    td.appendChild(units);
+                    val.appendChild(units);
 
                     td.classList.add('ds-temperature-pair');
                     chambers.append(td);
@@ -589,10 +589,16 @@ $(document).ready(function()
                     td.appendChild(sp);
 
                     let val = document.createElement('span');
-                    val.appendChild(document.createTextNode(t.celcius + '°C'));
+                    val.appendChild(document.createTextNode(t.celcius));
                     val.classList.add('ds-num')
                     val.classList.add('ds-temperature-value')
                     td.appendChild(val);
+
+                    let units = document.createElement('span');
+                    units.appendChild(document.createTextNode('°C'));
+                    units.classList.add('ds-temperature-units');
+                    val.appendChild(units);
+
                     td.classList.add('ds-temperature-pair');
                     pcbs.append(td);
                 }
