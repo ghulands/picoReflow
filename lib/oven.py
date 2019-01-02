@@ -11,7 +11,7 @@ import statistics
 import driver
 
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('oven')
 
 
 class Oven (threading.Thread):
@@ -24,7 +24,7 @@ class Oven (threading.Thread):
         self.daemon = True
         self.time_step = config['control']['time_step']
         self.profile = None
-        self.start_time = 0
+        self.start_time = None
         self.runtime = 0
         self.total_time = 0
         self.target = 0
@@ -107,7 +107,7 @@ class Oven (threading.Thread):
 
     def reset(self):
         self.profile = None
-        self.start_time = 0
+        self.start_time = None
         self.runtime = 0
         self.total_time = 0
         self.target = 0
@@ -135,8 +135,8 @@ class Oven (threading.Thread):
         count = 0
         total = 0
         for x in self.chamber_sensors:
-            if x > 0:
-                total = total + x
+            if x.get() > 0:
+                total = total + x.get()
                 count = count + 1
         avg = total / count
         return avg
@@ -151,8 +151,8 @@ class Oven (threading.Thread):
         count = 0
         total = 0
         for x in self.pcb_sensors:
-            if x > 0:
-                total = total + x
+            if x.get() > 0:
+                total = total + x.get()
                 count = count + 1
         avg = total / count
         return avg
@@ -320,8 +320,7 @@ class HeaterActuator(object):
         self.driver_instance.turn_off()
 
 
-
-class Profile():
+class Profile(object):
     def __init__(self, json_data):
         obj = json.loads(json_data)
         self.name = obj["name"]
