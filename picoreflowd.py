@@ -155,6 +155,12 @@ def handle_status():
     log.info("websocket (status) closed")
 
 
+@app.route('/autotune')
+def handle_autotune():
+    oven.autotune_heaters()
+    return "Autotuning has begun."
+
+
 def get_profiles():
     try:
         profile_files = os.listdir(profile_path)

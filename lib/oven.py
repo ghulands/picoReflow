@@ -7,16 +7,29 @@ import logging
 import json
 import importlib.util
 import statistics
+import os
+import sys
 
 import driver
 
-
 log = logging.getLogger('oven')
+
+try:
+    from pid import PIDArduino as PID
+    from autotune import PIDAutotune
+except ImportError:
+    log.error('Cannot find pid-autotune library. Did you initialize the git submodules?')
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, script_dir + '/pid-autotune/')
+
+
 
 
 class Oven (threading.Thread):
     STATE_IDLE = "IDLE"
     STATE_RUNNING = "RUNNING"
+    STATE_AUTOTUNING = "AUTO-TUNING"
 
     def __init__(self, config: dict):
         threading.Thread.__init__(self)
@@ -29,9 +42,11 @@ class Oven (threading.Thread):
         self.total_time = 0
         self.target = 0
         self.state = Oven.STATE_IDLE
-        self.pid = PID(ki=config['control']['pid']['ki'],
-                       kd=config['control']['pid']['kd'],
-                       kp=config['control']['pid']['kp'])
+        self.pid = PID(self.time_step,
+                       config['control']['pid']['kp'],
+                       config['control']['pid']['ki'],
+                       config['control']['pid']['kd'])
+        self.autotune = None
         self.drivers = {}
         self.chamber_sensors = []
         self.pcb_sensors = []
@@ -116,9 +131,11 @@ class Oven (threading.Thread):
         self.set_heat(False)
         self.set_cool(False)
         self.set_air(False)
-        self.pid = PID(ki=self.config['control']['pid']['ki'],
-                       kd=self.config['control']['pid']['kd'],
-                       kp=self.config['control']['pid']['kp'])
+        self.pid = PID(self.time_step,
+                       self.config['control']['pid']['kp'],
+                       self.config['control']['pid']['ki'],
+                       self.config['control']['pid']['kd'])
+        self.autotune = None
 
     def run_profile(self, profile):
         log.info("Running profile %s" % profile.name)
@@ -127,6 +144,25 @@ class Oven (threading.Thread):
         self.state = Oven.STATE_RUNNING
         self.start_time = datetime.datetime.now()
         log.info("Starting")
+
+    def autotune_heaters(self):
+        if self.state is not Oven.STATE_IDLE:
+            log.info('Oven is not idle. Please try once the oven is idle.')
+            return
+
+        log.info('Starting autotune sequence.')
+        self.profile = Profile('{"type": "profile", "data": [[150, 220], [300, 50]], "name": "autotune"}')
+        self.total_time = self.profile.get_duration()
+        self.start_time = datetime.datetime.now()
+        self.autotune = PIDAutotune(
+            self.profile.get_target_temperature(0),
+            out_step=10,
+            sampletime=self.time_step,
+            time=lambda : (datetime.datetime.now() - self.start_time).total_seconds()
+        )
+        self.set_heat(True)
+        self.set_air(True)
+        self.state = Oven.STATE_AUTOTUNING  # set this last since the oven thread will see this change.
 
     def abort_run(self):
         self.reset()
@@ -138,8 +174,10 @@ class Oven (threading.Thread):
             if x.get() > 0:
                 total = total + x.get()
                 count = count + 1
-        avg = total / count
-        return avg
+        if total > 0 and count > 0:
+            avg = total / count
+            return avg
+        return 0
 
     def chamber_has_variance(self):
         result = False
@@ -154,8 +192,16 @@ class Oven (threading.Thread):
             if x.get() > 0:
                 total = total + x.get()
                 count = count + 1
-        avg = total / count
-        return avg
+        if total > 0 and count > 0:
+            avg = total / count
+            return avg
+        return 0
+
+    def apply_fan_rules(self):
+        if self.get_pcb_temperature() > 200:
+            self.set_air(False)
+        elif self.get_pcb_temperature() < 180 or self.chamber_has_variance():
+            self.set_air(True)
 
     def run(self):
         temperature_count = 0
@@ -177,8 +223,7 @@ class Oven (threading.Thread):
                             self.runtime,
                             self.total_time))
                 self.target = self.profile.get_target_temperature(self.runtime)
-                pid = self.pid.compute(self.target, self.get_pcb_temperature())
-
+                pid = self.pid.calc(self.get_pcb_temperature(), self.target)
                 log.info("pid: %.3f" % pid)
 
                 self.set_cool(pid <= -1)
@@ -211,18 +256,52 @@ class Oven (threading.Thread):
                 #    self.set_heat(False)
                 #    self.set_cool(self.get_pcb_temperature() > self.target)
 
-                if self.get_pcb_temperature() > 200:
-                    self.set_air(False)
-                elif self.get_pcb_temperature() < 180 or self.chamber_has_variance():
-                    self.set_air(True)
+                self.apply_fan_rules()
 
                 if self.runtime >= self.total_time:
+                    self.reset()
+
+            elif self.state == Oven.STATE_AUTOTUNING:
+                runtime_delta = datetime.datetime.now() - self.start_time
+                self.runtime = runtime_delta.total_seconds()
+                log.info('Autotune t: %ds, state: %s, output: %d', self.runtime, self.autotune.state, self.autotune.output)
+                self.autotune.run(self.get_pcb_temperature())
+                if self.autotune.state == PIDAutotune.STATE_SUCCEEDED:
+                    self.set_heat(False)  # leave fan on to cool down quicker.
+                    self.state = Oven.STATE_IDLE
+                    params = self.autotune.get_pid_parameters()
+                    log.info(
+                        "PID Autotune Completed. Update your config with the following values: p:%.4f i:%.4f d:%.4f",
+                        params.Kp, params.Ki, params.Kd
+                    )
+                elif self.autotune.state == PIDAutotune.STATE_FAILED:
+                    self.set_heat(False)  # leave fan on to cool down quicker.
+                    self.state = Oven.STATE_IDLE
+                    log.error("Autotuning Failed.")
+                elif self.autotune.state == PIDAutotune.STATE_OFF:
+                    log.info("Autotuning is OFF.")
+                elif self.autotune.state == PIDAutotune.STATE_RELAY_STEP_UP:
+                    if self.is_cooling():
+                        self.set_heat(True)
+                        self.set_cool(False)
+                        self.apply_fan_rules()
+                elif self.autotune.state == PIDAutotune.STATE_RELAY_STEP_DOWN:
+                    if self.is_heating():
+                        self.set_heat(False)
+                        self.set_cool(True)
+                        self.apply_fan_rules()
+
+                if self.runtime >= self.total_time:
+                    log.error("Autotune failed to complete in time. Aborting.")
                     self.reset()
 
             if 0 < pid < 1.0:
                 time.sleep(self.time_step * (1 - pid))
             else:
                 time.sleep(self.time_step)
+
+    def is_heating(self):
+        return self.heat >= 1.0
 
     def set_heat(self, value):
         if value > 0:
@@ -234,6 +313,9 @@ class Oven (threading.Thread):
             for heater in self.heater_actuators:
                 heater.turn_off()
 
+    def is_cooling(self):
+        return self.cool >= 1.0
+
     def set_cool(self, value):
         if value:
             self.cool = 1.0
@@ -241,7 +323,6 @@ class Oven (threading.Thread):
                 fan.set_speed(1.0)
             for door in self.door_actuators:
                 door.open()
-
         else:
             self.cool = 0.0
             for fan in self.chamber_fans:
@@ -362,27 +443,27 @@ class Profile(object):
         return temp
 
 
-class PID(object):
-    def __init__(self, ki=1, kp=1, kd=1):
-        self.ki = ki
-        self.kp = kp
-        self.kd = kd
-        self.lastNow = datetime.datetime.now()
-        self.iterm = 0
-        self.lastErr = 0
-
-    def compute(self, set_point, is_point):
-        now = datetime.datetime.now()
-        time_delta = (now - self.lastNow).total_seconds()
-
-        error = float(set_point - is_point)
-        self.iterm += (error * time_delta * self.ki)
-        self.iterm = sorted([-1, self.iterm, 1])[1]
-        d_err = (error - self.lastErr) / time_delta
-
-        output = self.kp * error + self.iterm + self.kd * d_err
-        output = sorted([-1, output, 1])[1]
-        self.lastErr = error
-        self.lastNow = now
-
-        return output
+# class PID(object):
+#     def __init__(self, ki=1, kp=1, kd=1):
+#         self.ki = ki
+#         self.kp = kp
+#         self.kd = kd
+#         self.lastNow = datetime.datetime.now()
+#         self.iterm = 0
+#         self.lastErr = 0
+#
+#     def compute(self, set_point, is_point):
+#         now = datetime.datetime.now()
+#         time_delta = (now - self.lastNow).total_seconds()
+#
+#         error = float(set_point - is_point)
+#         self.iterm += (error * time_delta * self.ki)
+#         self.iterm = sorted([-1, self.iterm, 1])[1]
+#         d_err = (error - self.lastErr) / time_delta
+#
+#         output = self.kp * error + self.iterm + self.kd * d_err
+#         output = sorted([-1, output, 1])[1]
+#         self.lastErr = error
+#         self.lastNow = now
+#
+#         return output

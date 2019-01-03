@@ -1,0 +1,3 @@
+[submodule "lib/pid-autotune"]
+	path = lib/pid-autotune
+	url = https://github.com/hirschmann/pid-autotune.git
